@@ -136,6 +136,20 @@ enum PrefixTools {
         environment["WINEPREFIX"] = prefix.pfx.path(percentEncoded: false)
         environment["WINEMSYNC"] = syncBackend(prefix: prefix)
         environment["PATH"] = "\(root)/bin:" + (environment["PATH"] ?? "/usr/bin:/bin")
+        if runner.lastPathComponent == EngineInstaller.engineID {
+            let frameworks = "\(root)/Frameworks"
+            let metal = "\(frameworks)/renderer/d3dmetal"
+            environment["SikarugirAppWine11"] = "1"
+            environment["DYLD_FALLBACK_LIBRARY_PATH"] = "\(root)/lib:\(frameworks):\(frameworks)/GStreamer.framework/Libraries:/usr/lib"
+            environment["GST_PLUGIN_PATH"] = "\(frameworks)/GStreamer.framework/Libraries/gstreamer-1.0"
+            environment["WINEDLLPATH_D3DMETAL"] = "\(metal)/wine"
+            environment["WINEDLLPATH_PREPEND"] = "\(metal)/wine"
+            environment["CX_D3DMETALPATH"] = metal
+            environment["CX_APPLEGPT_LIBD3DSHARED_PATH"] = "\(metal)/external/libd3dshared.dylib"
+            environment["CX_APPLEGPTK_LIBD3DSHARED_PATH"] = environment["CX_APPLEGPT_LIBD3DSHARED_PATH"]
+            environment["VK_DRIVER_FILES"] = "\(root)/vulkan/icd.d/kosmickrisp_mesa_icd.json"
+            environment["ROSETTA_ADVERTISE_AVX"] = "1"
+        }
         return environment
     }
 
@@ -194,7 +208,7 @@ enum PrefixTools {
     static func launch(_ tool: WineTool, in prefix: WinePrefix) throws {
         let chosen = try resolvedTool(step: String(localized: "Open \(tool.label)"), for: prefix)
         try launch(
-            tool, in: prefix, runner: SupportPaths.clonedRoot(forBuild: chosen.build),
+            tool, in: prefix, runner: SupportPaths.runtimeRoot(forBuild: chosen.build),
             flavor: chosen.tool.flavor
         )
     }
@@ -215,7 +229,7 @@ enum PrefixTools {
     static func run(_ executable: URL, in prefix: WinePrefix) throws {
         let chosen = try resolvedTool(step: String(localized: "Run \(executable.lastPathComponent)"), for: prefix)
         try run(
-            executable, in: prefix, runner: SupportPaths.clonedRoot(forBuild: chosen.build),
+            executable, in: prefix, runner: SupportPaths.runtimeRoot(forBuild: chosen.build),
             flavor: chosen.tool.flavor
         )
     }
@@ -268,7 +282,7 @@ enum PrefixTools {
         )
         return try winetricks(
             verbs, in: prefix, script: script,
-            runner: SupportPaths.clonedRoot(forBuild: chosen.build), flavor: chosen.tool.flavor
+            runner: SupportPaths.runtimeRoot(forBuild: chosen.build), flavor: chosen.tool.flavor
         )
     }
 

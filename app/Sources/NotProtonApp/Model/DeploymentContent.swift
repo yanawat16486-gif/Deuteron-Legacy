@@ -172,13 +172,23 @@ enum DeploymentContent {
             File(source: payload.run, destination: compatTools.appending(path: "\($0.name)/run"),
                  name: "\($0.name)/run", executable: true)
         }
-        for build in Set(tools.map(\.build)).sorted() {
+        for build in Set(tools.map(\.build)).sorted() where build != EngineInstaller.engineID {
             let root = SupportPaths.clonedRoot(forBuild: build, runners: runners)
             for builtin in RunnerPatcher.builtins(in: root) {
                 let path = "\(builtin.arch)/\(builtin.name)"
                 if let entry = bridgePayload.sources.first(where: { $0.bridgePaths.contains(path) }) {
                     files.append(File(source: entry.source, destination: root.appending(path: "lib/wine/\(path)"),
                                       name: "crossover-\(build)/\(path)"))
+                }
+            }
+        }
+        if tools.contains(where: { $0.build == EngineInstaller.engineID }) {
+            let root = runners.appending(path: EngineInstaller.engineID)
+            for builtin in SikarugirSetup.builtins {
+                let path = "\(builtin.arch)/\(builtin.name)"
+                if let entry = bridgePayload.sources.first(where: { $0.bridgePaths.contains(path) }) {
+                    files.append(File(source: entry.source, destination: root.appending(path: "lib/wine/\(path)"),
+                                      name: "\(EngineInstaller.engineID)/\(path)"))
                 }
             }
         }
@@ -223,6 +233,14 @@ enum DeploymentContent {
                 files.append((NtdllPatcher.stagedCopy(of: arch, build: build.id, in: bridge), hash,
                               "bridge/wine/\(build.id)/\(arch.rawValue)/ntdll.dll"))
             }
+        }
+        if SikarugirSetup.isReady(runners: runners, bridge: bridge) {
+            let file = runners.appending(path: EngineInstaller.engineID + "/lib/wine/x86_64-windows/ntdll.dll")
+            files.append((file, SikarugirSetup.patchedNtdllSHA256,
+                          "\(EngineInstaller.engineID)/x86_64-windows/ntdll.dll"))
+            let staged = bridge.appending(path: "wine/\(EngineInstaller.engineID)/x86_64-windows/ntdll.dll")
+            files.append((staged, SikarugirSetup.patchedNtdllSHA256,
+                          "bridge/wine/\(EngineInstaller.engineID)/x86_64-windows/ntdll.dll"))
         }
         return files
     }

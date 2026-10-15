@@ -252,6 +252,7 @@ static int out_expand(np_out_t *o, const char *replace, const np_cap_t *caps) {
     ARG "=>{" \
     "const t=" ARG ".details,o=t.strLaunchOptions||\"\"," \
     "fex=" NP_FEX_TOOLS ".indexOf(t.strCompatToolName||\"" NP_FALLBACK_TOOL "\")>=0," \
+    "si=\"notproton-sikarugir11\"===t.strCompatToolName," \
     "npZh=" NP_WEB_IS_ZH ",npL=(en,zh)=>npZh?zh:en," \
     "L=MSCXLaunch(o,t.unAppID),g=L.g,s=L.s," \
     "T=(ks,l,on,off)=>(0," RT ".jsx)(" BARREL ".Yh,{className:\"MSCXRow\",label:l," \
@@ -273,10 +274,11 @@ static int out_expand(np_out_t *o, const char *replace, const np_cap_t *caps) {
     "{data:\"2.0\",label:\"2x\"}," \
     "{data:\"3.0\",label:\"3x\"}]," \
     "B=[{data:\"\",label:npL(\"Automatic\",\"自动\")}," \
+    "{data:\"d9vk\",label:\"D9VK (DirectX 8/9)\"}," \
     "{data:\"d3dmetal\",label:\"D3DMetal\"}," \
     "{data:\"dxmt\",label:\"DXMT\"}," \
     "{data:\"dxvk\",label:\"DXVK\"}," \
-    "{data:\"wined3d\",label:\"WineD3D\"}].filter(x=>!fex||x.data!==\"d3dmetal\");" \
+    "{data:\"wined3d\",label:\"WineD3D\"}].filter(x=>x.data!==\"d9vk\"||si).filter(x=>!fex||x.data!==\"d3dmetal\");" \
     "if(t.unAppID<2147483648&&(t.vecPlatforms||[]).indexOf(\"osx\")>=0" \
     "&&!t.strCompatToolName)return null;" \
     "return(0," RT ".jsx)(\"div\",{className:\"MSCXPanel\",children:(0," RT ".jsxs)(" RT ".Fragment,{children:[" \

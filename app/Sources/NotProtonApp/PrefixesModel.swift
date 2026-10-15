@@ -141,6 +141,13 @@ final class PrefixesModel {
         }
     }
 
+    func saveGraphicsProfile(_ profile: NotProtonGraphicsProfile, for prefix: WinePrefix) {
+        act(on: prefix) {
+            try GraphicsProfileStore.write(profile, to: prefix.root)
+            return String(localized: "Graphics settings saved for \(prefix.title).")
+        }
+    }
+
     func reveal(_ prefix: WinePrefix) {
         PrefixTools.reveal(prefix)
     }

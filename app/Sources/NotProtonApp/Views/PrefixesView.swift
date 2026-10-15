@@ -172,7 +172,52 @@ struct PrefixesView: View {
     @ViewBuilder
     private var strip: some View {
         Menu {
-            toolButtons(for: model.selectedPrefix)
+            if let prefix = model.selectedPrefix {
+                Menu("Wine Engine") {
+                    let selected = model.lastTool(prefix)
+                    ForEach(model.tools) { tool in
+                        Button {
+                            model.pendingConfirmation = .rebuild([prefix], tool)
+                        } label: {
+                            if selected == tool.display {
+                                Label(tool.display, systemImage: "checkmark")
+                            } else {
+                                Text(tool.display)
+                            }
+                        }
+                    }
+                    if model.tools.isEmpty {
+                        Text("No engines installed")
+                    }
+                }
+                Divider()
+                toolButtons(for: prefix)
+            }
+            if let prefix = model.selectedPrefix {
+                Divider()
+                Menu("Graphics Renderer") {
+                    ForEach([("", "Auto"), ("d9vk", "D9VK (DX8/9, Sikarugir)"), ("dxvk", "DXVK + MoltenVK"), ("dxmt", "DXMT"), ("d3dmetal", "D3DMetal"), ("wined3d", "WineD3D")], id: \.0) { value, label in
+                        Button {
+                            var profile = GraphicsProfileStore.read(from: prefix.root)
+                            profile.renderer = value
+                            model.saveGraphicsProfile(profile, for: prefix)
+                        } label: {
+                            if GraphicsProfileStore.read(from: prefix.root).renderer == value {
+                                Label(label, systemImage: "checkmark")
+                            } else { Text(label) }
+                        }
+                    }
+                    Divider()
+                    Button {
+                        var profile = GraphicsProfileStore.read(from: prefix.root)
+                        profile.retina.toggle()
+                        model.saveGraphicsProfile(profile, for: prefix)
+                    } label: {
+                        let enabled = GraphicsProfileStore.read(from: prefix.root).retina
+                        Label("Retina Mode: \(enabled ? "On" : "Off")", systemImage: enabled ? "checkmark" : "")
+                    }
+                }
+            }
         } label: {
             Label("Tools", systemImage: "wrench.and.screwdriver")
         }

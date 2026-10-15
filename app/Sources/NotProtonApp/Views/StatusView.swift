@@ -354,6 +354,15 @@ struct StatusView: View {
                 }
             }
 
+            Section("Wine Engine") {
+                if let engine = snapshot.managedWineEngine {
+                    StatusRow(title: "Sikarugir Wine 11", value: engine.version, tone: .ok,
+                              detail: engine.id)
+                } else {
+                    StatusRow(title: "Sikarugir Wine 11", value: "Not installed", tone: .neutral)
+                }
+            }
+
             componentsSection(snapshot.payload)
 
             dangerSection
