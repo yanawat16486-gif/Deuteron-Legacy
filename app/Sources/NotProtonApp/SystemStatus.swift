@@ -6,7 +6,7 @@ import Observation
 import UniformTypeIdentifiers
 
 enum AppVersion {
-    static let fallback = "0.1.0-dev"
+    static let fallback = "1.2.0"
 
     static var bundled: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? fallback
