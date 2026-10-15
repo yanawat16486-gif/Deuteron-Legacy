@@ -193,6 +193,18 @@ if [ "$np_flavor" = rosetta ] || [ ! -x "$WINELOADER" ] || [ ! -x "$WINESERVER" 
 fi
 export WINELOADER WINESERVER
 
+np_dropped=""
+if [ "${wine_unix##*/}" = aarch64-unix ]; then
+  if [ "${CX_GRAPHICS_BACKEND:-}" = d3dmetal ]; then
+    unset -v CX_GRAPHICS_BACKEND
+    np_dropped="CX_GRAPHICS_BACKEND=d3dmetal"
+  fi
+  for name in $(env | LC_ALL=C sed -nE 's/^(D3DM_[A-Z0-9_]*|ROSETTA_ADVERTISE_AVX)=.*/\1/p' | LC_ALL=C sort); do
+    unset -v "$name"
+    np_dropped="$np_dropped${np_dropped:+ }$name"
+  done
+fi
+
 # Keeps Wine from inheriting the prefix and template locks (fd 8 and 9).
 without_lock_fds() {
   "$@" 8>&- 9>&-
@@ -250,6 +262,7 @@ fi
   echo "STEAM_COMPAT_APP_ID=$STEAM_COMPAT_APP_ID"
   echo "-- steam env passed through --"
   env | grep -iE '^(Steam|SDL_)' | sort
+  [ -z "$np_dropped" ] || echo "ignored on arm64 Wine: $np_dropped"
 } >> "$log" 2>&1 || true
 
 stage_step="startup"
@@ -1553,35 +1566,6 @@ install_bundle() (
 )
 install_bundle
 
-wine_helpers='winedevice\.exe|services\.exe|plugplay\.exe|svchost\.exe'
-wine_helpers="$wine_helpers|rpcss\.exe|explorer\.exe|steam\.exe"
-wine_helpers="$wine_helpers|winemenubuilder\.exe|conhost\.exe|start\.exe"
-wine_helpers="$wine_helpers|wineboot\.exe|rundll32\.exe|tabtip\.exe"
-wine_helpers="$wine_helpers|vc_redist|vcredist|dxsetup\.exe|msiexec\.exe"
-wine_helpers="$wine_helpers|installinf|iscriptevaluator\.exe|regsvr32\.exe"
-wine_helpers="$wine_helpers|winedbg\.exe|unitycrashhandler"
-prefix_game_running() {
-  command -v lsof >/dev/null 2>&1 || return 1
-  dir=$(prefix_server_dir) || return 1
-  [ -d "$dir" ] || return 1
-  pids=$(lsof -t +D "$dir" 2>/dev/null | sort -u | tr '\n' ',')
-  pids=${pids%,}
-  [ -n "$pids" ] || return 1
-  # shellcheck disable=SC1003 # the pair matches the backslash in a drive path
-  ps -p "$pids" -o args= 2>/dev/null | grep -E '^[A-Za-z]:\\' | grep -viE "$wine_helpers" | grep -q .
-}
-
-wait_prefix_idle() {
-  idle=0
-  tick=0
-  while [ "$idle" -lt 10 ] && [ "$tick" -lt 300 ]; do
-    tick=$((tick + 1))
-    if prefix_game_running; then idle=0; else idle=$((idle + 1)); fi
-    sleep 1
-  done
-  echo "wait_prefix_idle done after tick=$tick idle=$idle" >> "$log" 2>&1 || true
-}
-
 kill_wine_prefix() {
   "$WINESERVER" -k >> "$log" 2>&1 || true
   "$WINESERVER" -w >> "$log" 2>&1 || true
@@ -1614,7 +1598,7 @@ else
   echo "=== client staged no overlay renderer, overlay disabled ===" >> "$log" 2>&1 || true
 fi
 set -- --args "$shim_exe" "$@"
-for name in $(env | sed -nE 's/^(CX_APPLEGPTK_LIBD3DSHARED_PATH|CX_APPLEGPT_LIBD3DSHARED_PATH|CX_D3DMETALPATH|SikarugirAppWine11|GST_PLUGIN_PATH|WINEDLLPATH_D3DMETAL|WINEDLLPATH_PREPEND|VK_DRIVER_FILES|WINEBOOT_HIDE_DIALOG|Steam[A-Za-z0-9]*|(CX_GRAPHICS|D3DM_|DXMT_|DXVK_|MTL_|ROSETTA_|MVK_CONFIG_)[A-Z0-9_]*)=.*/\1/p'); do
+for name in $(env | LC_ALL=C sed -nE 's/^(CX_APPLEGPTK_LIBD3DSHARED_PATH|CX_APPLEGPT_LIBD3DSHARED_PATH|CX_D3DMETALPATH|SikarugirAppWine11|GST_PLUGIN_PATH|WINEDLLPATH_D3DMETAL|WINEDLLPATH_PREPEND|VK_DRIVER_FILES|WINEBOOT_HIDE_DIALOG|Steam[A-Za-z0-9]*|(CX_GRAPHICS|D3DM_|DXMT_|DXVK_|MTL_|ROSETTA_|MVK_CONFIG_)[A-Z0-9_]*)=.*/\1/p'); do
   eval "value=\$$name"
   # shellcheck disable=SC2154 # eval assigns value on the line above
   set -- --env "$name=$value" "$@"
@@ -1642,29 +1626,7 @@ lsregister="$lsregister/Frameworks/LaunchServices.framework/Support/lsregister"
 open -n -W -a "$loader_app" "$@" >> "$log" 2>&1 &
 open_pid=$!
 status=0
-seen=0
-idle=0
-while :; do
-  if prefix_game_running; then
-    seen=1
-    idle=0
-  else
-    idle=$((idle + 1))
-  fi
-  if ! kill -0 "$open_pid" 2>/dev/null; then
-    wait "$open_pid" || status=$?
-    echo "=== bundle exited status=$status ===" >> "$log" 2>&1 || true
-    if [ "$status" -le 128 ]; then
-      wait_prefix_idle
-    fi
-    break
-  fi
-  if [ "$seen" -eq 1 ] && [ "$idle" -ge 10 ]; then
-    echo "=== game tree gone, ending session ===" >> "$log" 2>&1 || true
-    break
-  fi
-  sleep 1
-done
+wait "$open_pid" || status=$?
 echo "=== game exited status=$status, killing wine prefix ===" >> "$log" 2>&1 || true
 kill_wine_prefix
 echo "=== wine prefix killed, session ending ===" >> "$log" 2>&1 || true

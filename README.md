@@ -4,6 +4,8 @@ An experimental fork of [NotProton](https://github.com/NotProtonNot/NotProton) e
 
 The current development branch adds an installer and initial integration path for Sikarugir Wine 11, plus per-game graphics renderer settings. This work is in progress and has not been qualified across games or macOS configurations. CrossOver remains supported through the existing NotProton path.
 
+This fork follows the upstream macOS Steam Play workflow. Upstream currently documents stable Steam Client 1791918634 and beta 1791686101 with CrossOver 26.3 or CrossOver Preview 20261006/20260821; check the upstream README for current compatibility details.
+
 ## Current status
 
 - Development branch: `codex/alternate-wine-runtimes`
