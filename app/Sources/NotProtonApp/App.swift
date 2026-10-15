@@ -51,6 +51,7 @@ struct NotProtonApp: App {
                     switch pane {
                     case .status: await status.refresh()
                     case .prefixes, .backups: await prefixes.load()
+                    case .engine: break
                     }
                 }
             }

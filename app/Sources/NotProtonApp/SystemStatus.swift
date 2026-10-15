@@ -20,6 +20,7 @@ struct StatusSnapshot: Sendable {
     var crossOver: [CrossOverInstall]
     var crossOverLicense: [String: CrossOverLicense.Status] = [:]
     var runner: RunnerState
+    var managedWineEngine: RunnerStore.ManagedWineEngine? = nil
     var payload: PayloadState
     var installedRunners: [RunnerBuild] = []
     var orphanedRunners: [String] = []
@@ -43,6 +44,7 @@ struct StatusSnapshot: Sendable {
             crossOver: installs,
             crossOverLicense: licenses,
             runner: runner,
+            managedWineEngine: RunnerStore.managedWineEngine(),
             payload: PayloadInspector.inspect(builds: installed),
             installedRunners: installed,
             orphanedRunners: RunnerStore.orphanedClones(),

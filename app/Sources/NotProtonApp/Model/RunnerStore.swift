@@ -18,6 +18,22 @@ enum RunnerState: Sendable, Equatable {
 
 enum RunnerStore {
 
+    struct ManagedWineEngine: Sendable {
+        let id: String
+        let version: String
+    }
+
+    static func managedWineEngine(runners: URL = SupportPaths.runners) -> ManagedWineEngine? {
+        let root = runners.appending(path: EngineInstaller.engineID)
+        guard FileManager.default.isExecutableFile(
+            atPath: root.appending(path: "bin/wine").path(percentEncoded: false)),
+            FileManager.default.fileExists(
+                atPath: root.appending(path: "Frameworks").path(percentEncoded: false)),
+            let version = try? EngineInstaller.version(at: root),
+            version.lowercased().contains("wine-11") else { return nil }
+        return ManagedWineEngine(id: EngineInstaller.engineID, version: version)
+    }
+
     static func state(
         runners: URL = SupportPaths.runners,
         verify: @Sendable (RunnerBuild, URL) -> [String] = {
@@ -118,8 +134,12 @@ enum CompatToolList {
             $0.split(separator: "\t").first.map(String.init)
         })
         if case .build = holder { kept.insert(SupportedRunners.legacyToolName) }
-        return (builds, listed, SupportedRunners.tools(
-            for: builds, legacy: holder, fexAvailable: fexAvailable, keeping: kept))
+        var tools = SupportedRunners.tools(
+            for: builds, legacy: holder, fexAvailable: fexAvailable, keeping: kept)
+        if SikarugirSetup.isReady(runners: runners, bridge: file.deletingLastPathComponent().appending(path: "bridge")) {
+            tools.append(SikarugirSetup.tool)
+        }
+        return (builds, listed, tools)
     }
 
     // 1.0.x used the single 'notproton' tool name and wrote no tool list, so the
@@ -162,7 +182,11 @@ enum CompatToolList {
             )
             try atomicReplace(file, with: Data(text.utf8), step: String(localized: "Update compatibility tools"))
         }
-        prune(keeping: Set(builds.map(\.id)), runners: runners, bridge: bridge, compatTools: compatTools)
+        var kept = Set(builds.map(\.id))
+        if tools.contains(where: { $0.build == EngineInstaller.engineID }) {
+            kept.insert(EngineInstaller.engineID)
+        }
+        prune(keeping: kept, runners: runners, bridge: bridge, compatTools: compatTools)
         return changed
     }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Reads every per-build constant the ntdll detours need out of the binary, for
 # all archs. Internal development tool, ugly
-import hashlib, pathlib, struct, sys, re, bisect, capstone
+import hashlib, pathlib, struct, sys, re, bisect, capstone, os
 from capstone import x86 as X86, arm64 as A64
 
 ARCH = {0x8664: 'x86_64-windows', 0x14c: 'i386-windows', 0xaa64: 'aarch64-windows'}
@@ -300,6 +300,13 @@ def resolve_amd64(pe):
 
 def amd64_load_path(pe, body, hook):
     """Frame slot holding the load_path argument, read as [rsp+N] at the hook."""
+    forced = os.environ.get('NP_FORCE_LOAD_PATH')
+    if forced is not None:
+        try:
+            return int(forced, 0)
+        except ValueError:
+            raise SystemExit(f"NP_FORCE_LOAD_PATH must be an integer, got {forced!r}")
+
     # Neither build keeps the argument in rcx. One spills it to the stack right away,
     # the other stashes it in a callee-saved register and reuses that a few instructions
     # later.

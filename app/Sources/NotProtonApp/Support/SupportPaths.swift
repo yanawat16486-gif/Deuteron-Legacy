@@ -59,6 +59,12 @@ enum SupportPaths {
         runnerRoot(forBuild: build, runners: runners).appending(path: "CrossOver")
     }
 
+    static func runtimeRoot(forBuild build: String, runners: URL = SupportPaths.runners) -> URL {
+        build == EngineInstaller.engineID
+            ? runners.appending(path: build)
+            : clonedRoot(forBuild: build, runners: runners)
+    }
+
     static func prefixTemplates(forBuild build: String, in library: SteamLibrary) -> [URL] {
         CompatTool.Flavor.allCases.map { prefixTemplate(forBuild: build, flavor: $0, in: library) }
     }

@@ -76,6 +76,16 @@ for (const form of Object.keys(FORMS)) {
   t.ok(backends.map(o => o.data).join(',') === ',d3dmetal,dxmt,dxvk,wined3d',
        'the backend values stay as the tool reads them');
 
+  const sikarugir = walk(P({ details: details('', { strCompatToolName: 'notproton-sikarugir11' }) }))
+    .find(x => x.type === 'Dropdown').props.rgOptions;
+  t.ok(sikarugir.some(o => o.data === 'd9vk' && o.label === 'D9VK (DirectX 8/9)'),
+       'the Sikarugir tool offers D9VK in Steam');
+  written.length = 0;
+  walk(P({ details: details('', { strCompatToolName: 'notproton-sikarugir11' }) }))
+    .find(x => x.type === 'Dropdown').props.onChange({ data: 'd9vk' });
+  t.ok(last().includes('CX_GRAPHICS_BACKEND=d9vk'),
+       `choosing D9VK writes the renderer launch option (${last()})`);
+
   const root = P({ details: details('') });
   t.ok(root.props.className === 'MSCXPanel', 'the panel root carries its own class');
   const classes = nodes('').filter(x => x.type === 'Toggle').map(x => x.props.className);

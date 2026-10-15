@@ -150,11 +150,32 @@ fi
 if [ -n "$np_tool_dir" ] && [ -r "$np_tool_dir/build" ]; then
   read -r np_build < "$np_tool_dir/build" || np_build=""
 fi
-case "$np_build" in *[!A-Za-z0-9.-]*) np_build="" ;; esac
+case "$np_build" in *[!A-Za-z0-9._-]*) np_build="" ;; esac
 np_display=$(sed -n 's/.*"display_name"[[:space:]]*"\(.*\)".*/\1/p' \
   "$np_tool_dir/compatibilitytool.vdf" 2>/dev/null | head -1) || np_display=""
-[ -n "$np_display" ] || np_display="CrossOver build ${np_build:-unknown}"
-CX_ROOT="$np_support/runners/crossover-$np_build/CrossOver"
+[ -n "$np_display" ] || np_display="Wine build ${np_build:-unknown}"
+np_engine=crossover
+if [ "$np_build" = sikarugir-wine-11.0_1 ]; then
+  np_engine=sikarugir
+  CX_ROOT="$np_support/runners/$np_build"
+  frameworks="$CX_ROOT/Frameworks"
+  export SikarugirAppWine11=1
+  export DYLD_FALLBACK_LIBRARY_PATH="$CX_ROOT/lib:$frameworks:$frameworks/GStreamer.framework/Libraries:/usr/lib"
+  export GST_PLUGIN_PATH="$frameworks/GStreamer.framework/Libraries/gstreamer-1.0"
+  export WINEDLLPATH_D3DMETAL="$frameworks/renderer/d3dmetal/wine"
+  export WINEDLLPATH_PREPEND="$WINEDLLPATH_D3DMETAL"
+  export CX_D3DMETALPATH="$frameworks/renderer/d3dmetal"
+  export CX_APPLEGPT_LIBD3DSHARED_PATH="$CX_D3DMETALPATH/external/libd3dshared.dylib"
+  export CX_APPLEGPTK_LIBD3DSHARED_PATH="$CX_APPLEGPT_LIBD3DSHARED_PATH"
+  export CX_FWD_COMPAT_GL_CTX=1 DXMT_ALLOW_CROSS_PROCESS_SWAPCHAIN=1
+  export MVK_CONFIG_RESUME_LOST_DEVICE=1 ROSETTA_ADVERTISE_AVX=1 WINEBOOT_HIDE_DIALOG=1
+  # The runner's bundled manifest points one directory too high from
+  # vulkan/icd.d. Keep the engine immutable and provide a corrected copy per
+  # game prefix once STEAM_COMPAT_DATA_PATH is known below.
+  export VK_DRIVER_FILES="$CX_ROOT/vulkan/icd.d/kosmickrisp_mesa_icd.json"
+else
+  CX_ROOT="$np_support/runners/crossover-$np_build/CrossOver"
+fi
 export CX_ROOT
 # CrossOver initializes Rosetta's Windows thread-state support even without D3DMetal.
 if [ -f "$CX_ROOT/lib64/apple_gptk/external/libd3dshared.dylib" ]; then
@@ -185,6 +206,37 @@ if [ -n "$STEAM_COMPAT_DATA_PATH" ]; then
   log="$STEAM_COMPAT_DATA_PATH/notproton-run.log"
 else
   log=/dev/null
+fi
+
+# Per-game graphics profile written by NotProton's UI. Keep launch options as
+# the higher-priority override when the user supplied a backend explicitly.
+np_profile_backend=""
+np_profile_retina=""
+if [ -n "$STEAM_COMPAT_DATA_PATH" ] && [ -r "$STEAM_COMPAT_DATA_PATH/notproton-profile.json" ]; then
+  np_profile_backend=$(sed -n 's/.*"renderer"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$STEAM_COMPAT_DATA_PATH/notproton-profile.json" | head -1)
+  np_profile_retina=$(sed -n 's/.*"retina"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' "$STEAM_COMPAT_DATA_PATH/notproton-profile.json" | head -1)
+fi
+if [ -z "${CX_GRAPHICS_BACKEND:-}" ] && [ -n "$np_profile_backend" ]; then
+  export CX_GRAPHICS_BACKEND="$np_profile_backend"
+fi
+# Sikarugir ships D9VK as native d3d8/d3d9 DLLs. D9VK must load here; a
+# native,builtin fallback silently selects WineD3D and hides a broken setup.
+if [ "${CX_GRAPHICS_BACKEND:-}" = d9vk ] && [ "$np_engine" = sikarugir ]; then
+  np_d9vk="$CX_ROOT/Frameworks/renderer/d9vk/wine"
+  if [ -f "$np_d9vk/x86_64-windows/d3d9.dll" ] && [ -f "$np_d9vk/i386-windows/d3d9.dll" ]; then
+    export WINEDLLPATH="$np_d9vk/x86_64-windows:$np_d9vk/i386-windows:$WINEDLLPATH"
+    if [ -n "${WINEDLLOVERRIDES:-}" ]; then
+      export WINEDLLOVERRIDES="d3d8=n;d3d9=n;$WINEDLLOVERRIDES"
+    else
+      export WINEDLLOVERRIDES="d3d8=n;d3d9=n"
+    fi
+    echo "graphics backend=d9vk; d3d8/d3d9 native-only overrides enabled" >> "$log" 2>&1 || true
+  else
+    echo "graphics backend=d9vk requested, but this engine has no complete D9VK DLL set" >> "$log" 2>&1 || true
+  fi
+fi
+if [ -z "${NOTPROTON_RETINA:-}" ] && [ -n "$np_profile_retina" ]; then
+  [ "$np_profile_retina" = true ] && export NOTPROTON_RETINA=1 || export NOTPROTON_RETINA=0
 fi
 [ "$(stat -f %z "$log" 2>/dev/null || echo 0)" -gt 262144 ] \
   && : > "$log" || true
@@ -612,7 +664,7 @@ import_prefix_settings() {
 stage_step="runner check"
 if [ -z "$np_build" ] || [ ! -d "$CX_ROOT/lib/wine" ]; then
   echo "=== build ${np_build:-(none recorded)} behind this compatibility tool is not set up, set it up in NotProton ===" >> "$log" 2>&1 || true
-  show_alert "CrossOver is not set up" "The CrossOver build behind $(alert_safe "$np_display") is not set up. Set it up in NotProton, or pick another compatibility tool for this game."
+  show_alert "Wine is not set up" "The Wine engine behind $(alert_safe "$np_display") is not set up. Set it up in NotProton, or pick another compatibility tool for this game."
   exit 1
 fi
 echo "runner: build $np_build ($np_display) at $CX_ROOT" >> "$log" 2>&1 || true
@@ -620,7 +672,7 @@ echo "runner: build $np_build ($np_display) at $CX_ROOT" >> "$log" 2>&1 || true
 # Each CrossOver build needs its own template.
 # FEX builds need two, one for FEX/arm64 Wine and one for Rosetta/AMD64 Wine
 runner_id=""
-[ -z "$np_build" ] || runner_id="crossover-$np_build-${wine_unix##*/}"
+[ -z "$np_build" ] || runner_id="$np_engine-$np_build-${wine_unix##*/}"
 
 in_template_env() {
   prefix="$1"
@@ -630,7 +682,10 @@ in_template_env() {
     LANG="${LANG:-}" LC_ALL="${LC_ALL:-}" \
     PATH="$CX_ROOT/bin:/usr/bin:/bin:/usr/sbin:/sbin" CX_ROOT="$CX_ROOT" CX_HOME="$CX_HOME" \
     WINEDLLPATH="$CX_ROOT/lib/wine/x86_64-windows:$wine_unix" \
-    WINELOADER="$WINELOADER" WINESERVER="$WINESERVER" WINEPREFIX="$prefix" "$@"
+    WINELOADER="$WINELOADER" WINESERVER="$WINESERVER" WINEPREFIX="$prefix" \
+    DYLD_FALLBACK_LIBRARY_PATH="${DYLD_FALLBACK_LIBRARY_PATH:-/usr/lib}" \
+    GST_PLUGIN_PATH="${GST_PLUGIN_PATH:-}" SikarugirAppWine11="${SikarugirAppWine11:-}" \
+    VK_DRIVER_FILES="${VK_DRIVER_FILES:-}" "$@"
 }
 
 seed_scratch=""
@@ -1048,6 +1103,59 @@ if [ -n "$STEAM_COMPAT_DATA_PATH" ]; then
     show_alert "Saved-game folders need attention" "NotProton left the conflicting files in place. Open this prefix's notproton-run.log for details before trying again."
     exit 1
   fi
+  if [ "$np_engine" = sikarugir ]; then
+    np_vulkan_manifest="$STEAM_COMPAT_DATA_PATH/notproton-kosmickrisp-icd.json"
+    if [ -r "$CX_ROOT/vulkan/icd.d/kosmickrisp_mesa_icd.json" ]; then
+      sed "s|../../../Frameworks/libvulkan_kosmickrisp.dylib|$CX_ROOT/Frameworks/libvulkan_kosmickrisp.dylib|" \
+        "$CX_ROOT/vulkan/icd.d/kosmickrisp_mesa_icd.json" > "$np_vulkan_manifest" 2>> "$log" || true
+      if [ -s "$np_vulkan_manifest" ]; then
+        export VK_DRIVER_FILES="$np_vulkan_manifest"
+        echo "Vulkan ICD manifest=$VK_DRIVER_FILES" >> "$log" 2>&1 || true
+      fi
+    fi
+  fi
+  # Wine's launcher starts the actual game in a separate macOS app process.
+  # Install the selected native D9VK DLLs in this prefix's Windows DLL dirs,
+  # keeping a reversible copy of each original file.
+  np_d9vk_state="$STEAM_COMPAT_DATA_PATH/notproton-d9vk-state"
+  np_d9vk_backup="$STEAM_COMPAT_DATA_PATH/notproton-d9vk-backup"
+  np_sync_d9vk_prefix() {
+    for arch in system32 i386; do
+      case "$arch" in
+        system32) win_dir="$WINEPREFIX/drive_c/windows/system32"; src_arch=x86_64-windows ;;
+        i386) win_dir="$WINEPREFIX/drive_c/windows/syswow64"; src_arch=i386-windows ;;
+      esac
+      for dll in d3d8.dll d3d9.dll; do
+        dst="$win_dir/$dll"
+        src="$CX_ROOT/Frameworks/renderer/d9vk/wine/$src_arch/$dll"
+        backup="$np_d9vk_backup/$arch/$dll"
+        if [ "${CX_GRAPHICS_BACKEND:-}" = d9vk ] && [ "$np_engine" = sikarugir ] && [ -f "$src" ] && [ -d "$win_dir" ]; then
+          if [ ! -e "$np_d9vk_state" ]; then
+            mkdir -p "$(dirname "$backup")" 2>> "$log" || continue
+            if [ -e "$dst" ] || [ -L "$dst" ]; then
+              cp -p "$dst" "$backup" 2>> "$log" || continue
+            else
+              : > "$backup.missing"
+            fi
+          fi
+          cp -f "$src" "$dst" 2>> "$log" && echo "D9VK staged $arch/$dll" >> "$log" 2>&1 || true
+        elif [ -e "$np_d9vk_state" ]; then
+          if [ -f "$backup" ]; then
+            cp -pf "$backup" "$dst" 2>> "$log" || true
+          elif [ -f "$backup.missing" ]; then
+            rm -f "$dst"
+          fi
+        fi
+      done
+    done
+    if [ "${CX_GRAPHICS_BACKEND:-}" = d9vk ] && [ "$np_engine" = sikarugir ]; then
+      : > "$np_d9vk_state"
+    else
+      rm -f "$np_d9vk_state"
+      rm -rf "$np_d9vk_backup"
+    fi
+  }
+  np_sync_d9vk_prefix
   echo "video: RetinaMode=${NOTPROTON_RETINA:-0}" >> "$log" 2>&1 || true
   stage_step="game drive"
   map_game_drive
@@ -1362,6 +1470,11 @@ cat > "$loader_macos/launcher" <<LAUNCHER
 export WINELOADER="$WINELOADER"
 wine_log="$loader_root/notproton-wine.log"
 exec > "\$wine_log" 2>&1
+export DYLD_FALLBACK_LIBRARY_PATH="$CX_ROOT/lib:$CX_ROOT/Frameworks:$CX_ROOT/lib/wine/aarch64-unix:$CX_ROOT/lib/wine/x86_64-unix:$CX_ROOT/Frameworks/GStreamer.framework/Libraries:/usr/lib"
+export VK_DRIVER_FILES="$VK_DRIVER_FILES"
+echo "NotProton launcher: WINEDLLOVERRIDES=\$WINEDLLOVERRIDES"
+echo "NotProton launcher: VK_DRIVER_FILES=\$VK_DRIVER_FILES"
+echo "NotProton launcher: DYLD_FALLBACK_LIBRARY_PATH=\$DYLD_FALLBACK_LIBRARY_PATH"
 shim="$HOME/Library/Application Support/notproton/overlay-shim.dylib"
 if [ -n "\$STEAM_DYLD_INSERT_LIBRARIES" ]; then
   if [ -f "\$shim" ]; then
@@ -1501,7 +1614,7 @@ else
   echo "=== client staged no overlay renderer, overlay disabled ===" >> "$log" 2>&1 || true
 fi
 set -- --args "$shim_exe" "$@"
-for name in $(env | sed -nE 's/^(CX_APPLEGPTK_LIBD3DSHARED_PATH|Steam[A-Za-z0-9]*|(CX_GRAPHICS|D3DM_|DXMT_|DXVK_|MTL_|ROSETTA_)[A-Z0-9_]*)=.*/\1/p'); do
+for name in $(env | sed -nE 's/^(CX_APPLEGPTK_LIBD3DSHARED_PATH|CX_APPLEGPT_LIBD3DSHARED_PATH|CX_D3DMETALPATH|SikarugirAppWine11|GST_PLUGIN_PATH|WINEDLLPATH_D3DMETAL|WINEDLLPATH_PREPEND|VK_DRIVER_FILES|WINEBOOT_HIDE_DIALOG|Steam[A-Za-z0-9]*|(CX_GRAPHICS|D3DM_|DXMT_|DXVK_|MTL_|ROSETTA_|MVK_CONFIG_)[A-Z0-9_]*)=.*/\1/p'); do
   eval "value=\$$name"
   # shellcheck disable=SC2154 # eval assigns value on the line above
   set -- --env "$name=$value" "$@"
@@ -1511,6 +1624,7 @@ set -- \
   --env CX_HOME="$CX_HOME" \
   --env WINESERVER="$WINESERVER" \
   --env WINEDLLPATH="$WINEDLLPATH" \
+  --env DYLD_FALLBACK_LIBRARY_PATH="${DYLD_FALLBACK_LIBRARY_PATH:-/usr/lib}" \
   --env WINEDLLOVERRIDES="$WINEDLLOVERRIDES" \
   --env WINEMSYNC="$WINEMSYNC" \
   --env WINEPREFIX="$WINEPREFIX" \

@@ -12,7 +12,7 @@ extension PrefixTools {
         keepBackup: Bool = true
     ) throws -> URL? {
         let kept = try recreate(
-            prefix, runner: SupportPaths.clonedRoot(forBuild: tool.build, runners: runners),
+            prefix, runner: SupportPaths.runtimeRoot(forBuild: tool.build, runners: runners),
             flavor: tool.tool.flavor, now: now, keepBackup: keepBackup
         )
         try writeBuildRecord(tool, for: prefix)
